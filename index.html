@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Speech to Text — Live</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #0a0a0a;
+            --text:    #ffffff;
+            --interim: #888888;
+            --accent:  #e53935;
+            --font:    'Segoe UI', system-ui, sans-serif;
+        }
+
+        html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+
+        /* ── Layout ── */
+        .layout { display: flex; flex-direction: column; height: 100vh; }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            flex-shrink: 0;
+        }
+        .header-title  { color: #888; font-size: 14px; }
+        .header-status { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: #bbb; }
+
+        .dot { width: 9px; height: 9px; border-radius: 50%; background: #333; transition: background .3s; }
+        .dot.listening { background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+        .dot.ready     { background: #43a047; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+        /* ── Transcript ── */
+        .transcript {
+            flex: 1;
+            padding: 30px 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            overflow: hidden;
+        }
+        .line { font-size: 42px; font-weight: 700; line-height: 1.35; margin-bottom: 4px; }
+        .line.interim { color: var(--interim); }
+        .line.interim::before { content: '▶  '; }
+        .line.placeholder { color: #555; font-weight: 400; font-size: 22px; }
+
+        /* ── Settings ── */
+        .settings {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            padding: 10px 24px;
+            background: #0f0f0f;
+            border-top: 1px solid #1a1a1a;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .field { display: flex; align-items: center; gap: 6px; }
+        .field label { color: #999; font-size: 13px; white-space: nowrap; }
+        .field input, .field select {
+            background: #1c1c1c;
+            border: 1px solid #333;
+            color: #ddd;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font: inherit;
+            font-size: 13px;
+        }
+        .field input:focus, .field select:focus { outline: 1px solid #555; }
+
+        .pp-badge {
+            margin-left: auto;
+            font-size: 13px;
+            color: #777;
+            padding: 3px 9px;
+            border-radius: 3px;
+            border: 1px solid #1e1e1e;
+        }
+        .pp-badge.ok    { color: #43a047; border-color: #1b3a1e; }
+        .pp-badge.error { color: var(--accent); border-color: #3a1b1b; }
+
+        /* ── Controls ── */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            border-top: 1px solid #141414;
+            flex-shrink: 0;
+        }
+        button {
+            padding: 8px 22px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font: 600 13px var(--font);
+            transition: opacity .15s, transform .1s;
+        }
+        button:hover:not(:disabled)  { opacity: .85; }
+        button:active:not(:disabled) { transform: scale(.97); }
+        button:disabled { opacity: .3; cursor: not-allowed; }
+
+        #btnStart { background: var(--accent); color: #fff; }
+        #btnStop  { background: #252525; color: #ccc; }
+        #btnClear { background: #1a1a1a; color: #555; }
+
+        .hint { margin-left: auto; color: #666; font-size: 13px; }
+    </style>
+</head>
+
+<body>
+<div class="layout">
+
+    <div class="header">
+        <span class="header-title">Speech to Text — Gereja</span>
+        <div class="header-status">
+            <span class="dot" id="dot"></span>
+            <span id="statusText">Siap</span>
+            &ensp;·&ensp;Web Speech API
+        </div>
+    </div>
+
+    <div class="transcript" id="transcript">
+        <div class="line placeholder" id="placeholder">Tekan Mulai untuk memulai transkripsi…</div>
+    </div>
+
+    <div class="settings">
+        <div class="field">
+            <label>Bahasa</label>
+            <select id="lang">
+                <option value="id-ID" selected>Indonesia</option>
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>ProPresenter Port</label>
+            <input id="ppPort" type="number" value="51285" style="width:68px">
+        </div>
+        <div class="field">
+            <label>Message Name</label>
+            <input id="ppMessage" type="text" value="Live Transcript" style="width:130px">
+        </div>
+        <div class="field">
+            <label>Interval (ms)</label>
+            <input id="ppInterval" type="number" value="150" style="width:55px">
+        </div>
+        <span class="pp-badge" id="ppBadge" style="visibility:hidden">–</span>
+    </div>
+
+    <div class="controls">
+        <button id="btnStart">▶ Mulai</button>
+        <button id="btnStop"  disabled>■ Stop</button>
+        <button id="btnClear">🗑 Bersihkan</button>
+        <span class="hint">F11: fullscreen &nbsp;|&nbsp; Esc: windowed</span>
+    </div>
+
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const CHARS_BEFORE_RESET = 100;  // reset layar setelah ~2 baris visual (42px bold)
+
+// ── State ──────────────────────────────────────────────────────────────────
+const committed = [];
+let interim     = '';
+let recog       = null;
+let running     = false;
+
+let ppMsgId     = null;
+let ppTokenName = null;
+let ppPending   = null;
+let ppWorker    = null;
+
+// ── DOM ────────────────────────────────────────────────────────────────────
+const transcriptEl = document.getElementById('transcript');
+const placeholder  = document.getElementById('placeholder');
+const dot          = document.getElementById('dot');
+const statusText   = document.getElementById('statusText');
+const ppBadge      = document.getElementById('ppBadge');
+const btnStart     = document.getElementById('btnStart');
+const btnStop      = document.getElementById('btnStop');
+const btnClear     = document.getElementById('btnClear');
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+    transcriptEl.querySelectorAll('.line:not(.placeholder)').forEach(el => el.remove());
+    placeholder.style.display = (committed.length === 0 && !interim) ? '' : 'none';
+
+    committed.forEach(text => {
+        const div = document.createElement('div');
+        div.className = 'line';
+        div.textContent = text;
+        transcriptEl.appendChild(div);
+    });
+
+    if (interim) {
+        const div = document.createElement('div');
+        div.className = 'line interim';
+        div.textContent = interim;
+        transcriptEl.appendChild(div);
+    }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+    dot.className   = 'dot' + (state ? ' ' + state : '');
+    statusText.textContent = text;
+}
+
+function setPpBadge(state, text) {
+    ppBadge.className      = 'pp-badge' + (state ? ' ' + state : '');
+    ppBadge.textContent    = text;
+    ppBadge.style.visibility = text ? 'visible' : 'hidden';
+}
+
+function ppBase() {
+    return `http://localhost:${document.getElementById('ppPort').value}/v1`;
+}
+
+// ── ProPresenter ───────────────────────────────────────────────────────────
+async function ppConnect() {
+    const msgName = document.getElementById('ppMessage').value.trim();
+    setPpBadge('', 'ProPresenter: menghubungi…');
+    try {
+        const res  = await fetch(`${ppBase()}/messages`);
+        const msgs = await res.json();
+        const msg  = msgs.find(m => m.id.name === msgName);
+
+        if (!msg) {
+            setPpBadge('error', `PP: message '${msgName}' tidak ditemukan`);
+            return;
+        }
+
+        ppMsgId = msg.id.uuid;
+
+        const res2   = await fetch(`${ppBase()}/message/${ppMsgId}`);
+        const data   = await res2.json();
+        const token  = (data.tokens || []).find(t => 'text' in t);
+
+        if (!token) {
+            setPpBadge('error', 'PP: tidak ada text token di message');
+            return;
+        }
+
+        ppTokenName = token.name;
+
+        // Trigger once to show the message overlay
+        await fetch(`${ppBase()}/message/${ppMsgId}/trigger`, { method: 'POST' });
+        setPpBadge('ok', 'ProPresenter: terhubung');
+
+    } catch {
+        setPpBadge('error', 'PP: tidak bisa connect (ProPresenter running?)');
+    }
+}
+
+function ppStartWorker() {
+    const ms = parseInt(document.getElementById('ppInterval').value) || 150;
+    ppWorker = setInterval(async () => {
+        if (!ppPending || !ppMsgId || !ppTokenName) return;
+        const text = ppPending;
+        ppPending  = null;
+        try {
+            await fetch(`${ppBase()}/message/${ppMsgId}/trigger`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify([{ name: ppTokenName, text: { text } }]),
+            });
+        } catch { /* silent — ProPresenter mungkin sedang sibuk */ }
+    }, ms);
+}
+
+function ppStopWorker() {
+    if (ppWorker) { clearInterval(ppWorker); ppWorker = null; }
+}
+
+async function ppClear() {
+    if (!ppMsgId) return;
+    try { await fetch(`${ppBase()}/message/${ppMsgId}/clear`); } catch { /* silent */ }
+    ppMsgId = ppTokenName = null;
+    setPpBadge('', '');
+}
+
+function ppSchedule(text) {
+    if (ppMsgId && ppTokenName) ppPending = text;
+}
+
+// ── On transcript update ───────────────────────────────────────────────────
+function onUpdate() {
+    render();
+    const display = interim || (committed.length ? committed[committed.length - 1] : null);
+    if (display) ppSchedule(display);
+}
+
+// ── Speech Recognition ─────────────────────────────────────────────────────
+async function start() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+        alert('Web Speech API tidak tersedia.\nGunakan Chrome atau Edge terbaru.');
+        return;
+    }
+
+    committed.length = 0;
+    interim = '';
+    running = true;
+    render();
+
+    btnStart.disabled = true;
+    btnStop.disabled  = false;
+    btnClear.disabled = true;
+
+    await ppConnect();
+    ppStartWorker();
+
+    recog = new SR();
+    recog.lang            = document.getElementById('lang').value;
+    recog.continuous      = true;
+    recog.interimResults  = true;
+    recog.maxAlternatives = 1;
+
+    recog.onstart = () => setStatus('listening', 'Mendengarkan…');
+
+    recog.onresult = (e) => {
+        let newInterim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            const r = e.results[i];
+            if (r.isFinal) {
+                const t = r[0].transcript.trim();
+                if (t) {
+                    const totalChars = committed.reduce((n, s) => n + s.length, 0);
+                    if (totalChars >= CHARS_BEFORE_RESET) committed.length = 0;
+                    committed.push(t);
+                }
+            } else {
+                newInterim += r[0].transcript;
+            }
+        }
+        interim = newInterim.trim();
+        onUpdate();
+    };
+
+    recog.onerror = (e) => {
+        if (e.error === 'not-allowed') {
+            setStatus('', 'Izin mikrofon ditolak — izinkan di browser lalu coba lagi');
+            stop();
+        } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+            console.warn('[STT error]', e.error);
+        }
+    };
+
+    // Chrome stops recognition after ~60s silence — auto-restart
+    recog.onend = () => {
+        if (running) {
+            // Small delay to avoid InvalidStateError on rapid restart
+            setTimeout(() => { if (running) try { recog.start(); } catch {} }, 100);
+        }
+    };
+
+    recog.start();
+}
+
+async function stop() {
+    running = false;   // set first so onend does not auto-restart
+
+    if (recog) {
+        recog.onend = null;
+        recog.stop();
+        recog = null;
+    }
+
+    ppStopWorker();
+    await ppClear();
+
+    interim = '';
+    render();
+
+    setStatus('', 'Selesai');
+    btnStart.disabled = false;
+    btnStop.disabled  = true;
+    btnClear.disabled = false;
+}
+
+function clearDisplay() {
+    committed.length = 0;
+    interim = '';
+    render();
+}
+
+// ── Event listeners ────────────────────────────────────────────────────────
+btnStart.addEventListener('click', start);
+btnStop .addEventListener('click', stop);
+btnClear.addEventListener('click', clearDisplay);
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'F11') {
+        e.preventDefault();
+        document.documentElement.requestFullscreen?.();
+    }
+    if (e.key === 'Escape' && document.fullscreenElement) {
+        document.exitFullscreen?.();
+    }
+});
+</script>
+</body>
+</html>
