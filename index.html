@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Speech to Text — Live</title>
+    <link rel="icon"             type="image/x-icon" href="favicon/favicon.ico">
+    <link rel="icon"             type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+    <link rel="icon"             type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180"  href="favicon/apple-touch-icon.png">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -35,20 +39,105 @@
         .dot.listening { background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
         .dot.ready     { background: #43a047; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes slideInVerse { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        .verse-entry-new { animation: slideInVerse .22s ease forwards; }
 
         /* ── Transcript ── */
+        .content-area { display: flex; flex: 1; overflow: hidden; }
+
         .transcript {
             flex: 1;
-            padding: 30px 40px;
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
             overflow: hidden;
+            position: relative;
+        }
+        .transcript-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 40px 18px;
+            display: flex;
+            flex-direction: column;
+        }
+        .transcript-history::-webkit-scrollbar       { width: 4px; }
+        .transcript-history::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+        [data-theme="light"] .transcript-history::-webkit-scrollbar-thumb { background: #ccc; }
+        .transcript-spacer { flex: 1; }
+
+        .transcript-active {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding: 0 40px;
+            border-top: 1px solid #1e1e1e;
+            min-height: 120px;
+        }
+        [data-theme="light"] .transcript-active { border-top-color: #ddd; }
+
+        .transcript::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -55%);
+            width: 380px;
+            height: 380px;
+            background: url('assets/background.png') center / contain no-repeat;
+            filter: grayscale(100%);
+            opacity: 0.14;
+            pointer-events: none;
+        }
+        [data-theme="light"] .transcript::before {
+            opacity: 0.35;
+            mix-blend-mode: multiply;
         }
         .line { font-size: 42px; font-weight: 700; line-height: 1.35; margin-bottom: 4px; }
         .line.interim { color: var(--interim); }
         .line.interim::before { content: '▶  '; }
         .line.placeholder { color: #555; font-weight: 400; font-size: 22px; }
+        .verse-ref { color: #f5c518; background: rgba(245, 197, 24, 0.10); border-radius: 3px; padding: 0 4px; }
+
+        /* ── Verse Log ── */
+        .verse-log {
+            width: 210px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #161616;
+            background: #080808;
+        }
+        .verse-log-title {
+            padding: 16px 14px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .verse-count { color: #f5c518; opacity: .65; font-weight: 700; }
+        .verse-log-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+        .verse-log-list::-webkit-scrollbar { width: 3px; }
+        .verse-log-list::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        .verse-log-entry {
+            font-size: 13px;
+            font-weight: 600;
+            color: #f5c518;
+            padding: 5px 8px;
+            border-radius: 4px;
+            margin-bottom: 2px;
+            cursor: pointer;
+            transition: background .15s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .verse-log-entry:hover { background: rgba(245, 197, 24, 0.08); }
+        .verse-log-entry:hover .copy-hint { opacity: 1; }
+        .copy-hint { font-size: 10px; color: #555; opacity: 0; transition: opacity .15s; }
+        .verse-log-empty { font-size: 12px; color: #222; padding: 6px 8px; }
 
         /* ── Settings ── */
         .settings {
@@ -110,7 +199,56 @@
         #btnStop  { background: #252525; color: #ccc; }
         #btnClear { background: #1a1a1a; color: #555; }
 
-        .hint { margin-left: auto; color: #666; font-size: 13px; }
+        .controls-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+        .hint { color: #666; font-size: 13px; }
+
+        .waveform-canvas { vertical-align: middle; border-radius: 2px; }
+
+        button.btn-theme {
+            background: transparent;
+            border: 1px solid #2a2a2a;
+            color: #484848;
+            padding: 3px 10px;
+            font-size: 13px;
+            font-weight: 400;
+            border-radius: 4px;
+            margin-left: 16px;
+        }
+        button.btn-theme:hover:not(:disabled) { opacity: 1; color: #888; border-color: #444; }
+
+        [data-theme="light"] { color-scheme: light; }
+        [data-theme="light"] html,
+        [data-theme="light"] body                          { background: #f2f2f2; color: #111; }
+        [data-theme="light"] .header-title                { color: #777; }
+        [data-theme="light"] .header-status               { color: #444; }
+        [data-theme="light"] .dot                         { background: #bbb; }
+        [data-theme="light"] .dot.listening              { background: var(--accent); }
+        [data-theme="light"] .dot.ready                  { background: #43a047; }
+        [data-theme="light"] .line.interim                { color: #777; }
+        [data-theme="light"] .line.placeholder            { color: #aaa; }
+        [data-theme="light"] .settings                    { background: #e8e8e8; border-top-color: #d4d4d4; }
+        [data-theme="light"] .field label                 { color: #666; }
+        [data-theme="light"] .field input,
+        [data-theme="light"] .field select                { background: #fff; border-color: #ccc; color: #222; }
+        [data-theme="light"] .field input:focus,
+        [data-theme="light"] .field select:focus          { outline-color: #bbb; }
+        [data-theme="light"] .pp-badge                   { color: #888; border-color: #d0d0d0; }
+        [data-theme="light"] .pp-badge.ok                { color: #43a047; border-color: #81c784; }
+        [data-theme="light"] .pp-badge.error             { color: var(--accent); border-color: #3a1b1b; }
+        [data-theme="light"] .controls                    { border-top-color: #ddd; }
+        [data-theme="light"] #btnStop                     { background: #e0e0e0; color: #333; }
+        [data-theme="light"] #btnClear                    { background: #e8e8e8; color: #888; }
+        [data-theme="light"] .hint                        { color: #aaa; }
+        [data-theme="light"] .verse-ref                   { color: #a07000; background: rgba(160, 112, 0, 0.12); }
+        [data-theme="light"] .verse-log                   { background: #eaeaea; border-left-color: #d4d4d4; }
+        [data-theme="light"] .verse-log-title             { color: #888; }
+        [data-theme="light"] .verse-count                 { color: #a07000; opacity: 1; }
+        [data-theme="light"] .verse-log-entry             { color: #a07000; }
+        [data-theme="light"] .verse-log-list::-webkit-scrollbar-thumb { background: #ccc; }
+        [data-theme="light"] .verse-log-empty             { color: #ccc; }
+        [data-theme="light"] .copy-hint                   { color: #bbb; }
+        [data-theme="light"] button.btn-theme             { border-color: #ccc; color: #aaa; }
+        [data-theme="light"] button.btn-theme:hover:not(:disabled) { color: #777; border-color: #bbb; }
     </style>
 </head>
 
@@ -118,16 +256,30 @@
 <div class="layout">
 
     <div class="header">
-        <span class="header-title">Speech to Text — Gereja</span>
+        <span class="header-title">Speech to Text — GSKI Rehobot Surabaya</span>
         <div class="header-status">
             <span class="dot" id="dot"></span>
             <span id="statusText">Siap</span>
             &ensp;·&ensp;Web Speech API
+            <button id="btnTheme" class="btn-theme">☀</button>
         </div>
     </div>
 
-    <div class="transcript" id="transcript">
-        <div class="line placeholder" id="placeholder">Tekan Mulai untuk memulai transkripsi…</div>
+    <div class="content-area">
+        <div class="transcript" id="transcript">
+            <div class="transcript-history" id="transcriptHistory">
+                <div class="transcript-spacer"></div>
+                <div class="line placeholder" id="placeholder">Klik <b>▶ Mulai</b> untuk memulai transkripsi…</div>
+            </div>
+            <div class="transcript-active" id="transcriptActive"></div>
+        </div>
+
+        <div class="verse-log">
+            <div class="verse-log-title">Ayat Disebutkan <span id="verseCount" class="verse-count"></span></div>
+            <div class="verse-log-list" id="verseLogList">
+                <div class="verse-log-empty">–</div>
+            </div>
+        </div>
     </div>
 
     <div class="settings">
@@ -158,28 +310,77 @@
         <button id="btnStart">▶ Mulai</button>
         <button id="btnStop"  disabled>■ Stop</button>
         <button id="btnClear">🗑 Bersihkan</button>
-        <span class="hint">F11: fullscreen &nbsp;|&nbsp; Esc: windowed</span>
+        <div class="controls-right">
+            <canvas id="waveform" class="waveform-canvas" width="64" height="16"></canvas>
+            <span class="hint">F11: fullscreen &nbsp;|&nbsp; Esc: windowed</span>
+        </div>
     </div>
 
 </div>
 
 <script>
-// ── Constants ──────────────────────────────────────────────────────────────
-const CHARS_BEFORE_RESET = 100;  // reset layar setelah ~2 baris visual (42px bold)
+const RECOGNITION_RESTART_DELAY_MS = 100;
+const TITLE_IDLE        = 'Speech to Text — Live';
+const TITLE_LIVE        = '● LIVE · Speech to Text — GSKI Rehobot Surabaya';
+const PLACEHOLDER_IDLE  = 'Klik <b>▶ Mulai</b> untuk memulai transkripsi…';
+const PLACEHOLDER_LIVE  = 'Mulai berbicara…';
 
-// ── State ──────────────────────────────────────────────────────────────────
-const committed = [];
-let interim     = '';
-let recog       = null;
-let running     = false;
+const BIBLE_BOOKS = [
+    'Kisah Para Rasul', 'Kidung Agung', 'Hakim-hakim',
+    '1 Raja-raja', '2 Raja-raja', 'Raja-raja',
+    '1 Tawarikh',  '2 Tawarikh',  'Tawarikh',
+    '1 Tesalonika','2 Tesalonika', 'Tesalonika',
+    '1 Timotius',  '2 Timotius',  'Timotius',
+    '1 Korintus',  '2 Korintus',  'Korintus',
+    '1 Samuel',    '2 Samuel',    'Samuel',
+    '1 Yohanes',   '2 Yohanes',   '3 Yohanes',
+    '1 Petrus',    '2 Petrus',    'Petrus',
+    'Kejadian', 'Keluaran', 'Imamat',  'Bilangan', 'Ulangan',
+    'Yosua', 'Rut', 'Ezra', 'Nehemia', 'Ester', 'Ayub',
+    'Mazmur', 'Amsal', 'Pengkhotbah',
+    'Yesaya', 'Yeremia', 'Ratapan', 'Yehezkiel', 'Daniel',
+    'Hosea', 'Yoel', 'Amos', 'Obaja', 'Yunus', 'Mikha',
+    'Nahum', 'Habakuk', 'Zefanya', 'Hagai', 'Zakharia', 'Maleakhi',
+    'Matius', 'Markus', 'Lukas', 'Yohanes', 'Roma',
+    'Galatia', 'Efesus', 'Filipi', 'Kolose', 'Titus', 'Filemon',
+    'Ibrani', 'Yakobus', 'Yudas', 'Wahyu',
+];
 
-let ppMsgId     = null;
-let ppTokenName = null;
-let ppPending   = null;
-let ppWorker    = null;
+const NUMWORD_PAT = [
+    'dua puluh sembilan', 'dua puluh delapan', 'dua puluh tujuh', 'dua puluh enam',
+    'dua puluh lima', 'dua puluh empat', 'dua puluh tiga', 'dua puluh dua', 'dua puluh satu',
+    'tiga puluh', 'dua puluh', 'sembilan belas', 'delapan belas', 'tujuh belas', 'enam belas',
+    'lima belas', 'empat belas', 'tiga belas', 'dua belas', 'sebelas',
+    'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh',
+].map(w => w.replace(/ /g, '\\s+')).join('|');
 
-// ── DOM ────────────────────────────────────────────────────────────────────
-const transcriptEl = document.getElementById('transcript');
+const NUM_PAT = `(?:(?:yang\\s+)?ke[-\\s]?)?(?:\\d+|${NUMWORD_PAT})`;
+
+const VERSE_RE          = buildVerseRegex();
+const COMPLETE_VERSE_RE = buildCompleteVerseRegex();
+const BOOK_CANONICAL    = Object.fromEntries(BIBLE_BOOKS.map(b => [b.toLowerCase(), b]));
+
+const committed     = [];
+const sessionVerses = [];
+let interim                 = '';
+let recog                   = null;
+let running                 = false;
+let audioContext    = null;
+let analyser        = null;
+let micStream       = null;
+let animationFrame  = null;
+
+let proPresenterMsgId       = null;
+let proPresenterTokenName   = null;
+let proPresenterPending     = null;
+let proPresenterWorker      = null;
+
+const transcriptEl      = document.getElementById('transcript');
+const transcriptHistory = document.getElementById('transcriptHistory');
+const transcriptActive  = document.getElementById('transcriptActive');
+const verseLogList      = document.getElementById('verseLogList');
+const verseCount        = document.getElementById('verseCount');
+const btnTheme          = document.getElementById('btnTheme');
 const placeholder  = document.getElementById('placeholder');
 const dot          = document.getElementById('dot');
 const statusText   = document.getElementById('statusText');
@@ -188,223 +389,450 @@ const btnStart     = document.getElementById('btnStart');
 const btnStop      = document.getElementById('btnStop');
 const btnClear     = document.getElementById('btnClear');
 
-// ── Render ─────────────────────────────────────────────────────────────────
-function render() {
-    transcriptEl.querySelectorAll('.line:not(.placeholder)').forEach(el => el.remove());
-    placeholder.style.display = (committed.length === 0 && !interim) ? '' : 'none';
+const waveformCanvas = document.getElementById('waveform');
 
-    committed.forEach(text => {
-        const div = document.createElement('div');
-        div.className = 'line';
-        div.textContent = text;
-        transcriptEl.appendChild(div);
-    });
-
-    if (interim) {
-        const div = document.createElement('div');
-        div.className = 'line interim';
-        div.textContent = interim;
-        transcriptEl.appendChild(div);
+function drawIdleWaveform() {
+    const ctx = waveformCanvas.getContext('2d');
+    const BAR_COUNT = 7;
+    const barWidth = (waveformCanvas.width - (BAR_COUNT - 1) * 2) / BAR_COUNT;
+    const isLight = document.documentElement.dataset.theme === 'light';
+    ctx.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+    ctx.fillStyle = isLight ? 'rgba(60,60,60,0.2)' : 'rgba(255,255,255,0.15)';
+    for (let i = 0; i < BAR_COUNT; i++) {
+        ctx.fillRect(i * (barWidth + 2), (waveformCanvas.height - 2) / 2, barWidth, 2);
     }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function setStatus(state, text) {
-    dot.className   = 'dot' + (state ? ' ' + state : '');
+function drawWaveform() {
+    const ctx = waveformCanvas.getContext('2d');
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const BAR_COUNT = 7;
+    const binStep = Math.floor(analyser.frequencyBinCount / BAR_COUNT);
+    const barWidth = (waveformCanvas.width - (BAR_COUNT - 1) * 2) / BAR_COUNT;
+
+    function draw() {
+        animationFrame = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+        ctx.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+
+        const isLight = document.documentElement.dataset.theme === 'light';
+        ctx.fillStyle = isLight ? 'rgba(60,60,60,0.55)' : 'rgba(255,255,255,0.55)';
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+            let sum = 0;
+            for (let j = 0; j < binStep; j++) sum += dataArray[i * binStep + j];
+            const barHeight = Math.max(2, (sum / binStep / 255) * waveformCanvas.height);
+            const x = i * (barWidth + 2);
+            ctx.fillRect(x, (waveformCanvas.height - barHeight) / 2, barWidth, barHeight);
+        }
+    }
+    draw();
+}
+
+async function startWaveform() {
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 64;
+        audioContext.createMediaStreamSource(micStream).connect(analyser);
+        drawWaveform();
+    } catch { /* waveform is optional */ }
+}
+
+function stopWaveform() {
+    if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
+    if (audioContext)   { audioContext.close(); audioContext = null; }
+    if (micStream)      { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+    analyser = null;
+    drawIdleWaveform();
+}
+
+function buildVerseRegex() {
+    const escaped = BIBLE_BOOKS
+        .map(book => book.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .sort((a, b) => b.length - a.length);
+    const n = NUM_PAT;
+    return new RegExp(
+        `(${escaped.join('|')})` +
+        `(?:\\s+(?:pasal\\s+(?:yang\\s+)?)?(?:${n})(?:\\s+(?:dan\\s+)?ayat\\s+(?:yang\\s+)?(?:${n})|\\s*:\\s*(?:${n})|\\s+(?:${n}))?)?`,
+        'gi'
+    );
+}
+
+function buildCompleteVerseRegex() {
+    const escaped = BIBLE_BOOKS
+        .map(book => book.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .sort((a, b) => b.length - a.length);
+    const n = NUM_PAT;
+    return new RegExp(
+        `(${escaped.join('|')})\\s+(?:pasal\\s+(?:yang\\s+)?)?(${n})(?:\\s+(?:dan\\s+)?ayat\\s+(?:yang\\s+)?|\\s*:\\s*|\\s+)(${n})`,
+        'gi'
+    );
+}
+
+const WORD_NUM_MAP = {
+    'satu': '1', 'dua': '2', 'tiga': '3', 'empat': '4', 'lima': '5',
+    'enam': '6', 'tujuh': '7', 'delapan': '8', 'sembilan': '9', 'sepuluh': '10',
+    'sebelas': '11', 'dua belas': '12', 'tiga belas': '13', 'empat belas': '14',
+    'lima belas': '15', 'enam belas': '16', 'tujuh belas': '17', 'delapan belas': '18',
+    'sembilan belas': '19', 'dua puluh': '20', 'dua puluh satu': '21', 'dua puluh dua': '22',
+    'dua puluh tiga': '23', 'dua puluh empat': '24', 'dua puluh lima': '25',
+    'dua puluh enam': '26', 'dua puluh tujuh': '27', 'dua puluh delapan': '28',
+    'dua puluh sembilan': '29', 'tiga puluh': '30',
+};
+
+function normalizeNumber(str) {
+    const s = str.trim().toLowerCase()
+        .replace(/^yang\s+/, '').replace(/^ke[-\s]?/, '').trim()
+        .replace(/\s+/g, ' ');
+    if (/^\d+$/.test(s)) return s;
+    return WORD_NUM_MAP[s] ?? null;
+}
+
+function extractCompleteVerses(text) {
+    const re = new RegExp(COMPLETE_VERSE_RE.source, 'gi');
+    const refs = [];
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        const chapter = normalizeNumber(match[2]);
+        const verse   = normalizeNumber(match[3]);
+        if (!chapter || !verse) continue;
+        refs.push({ book: BOOK_CANONICAL[match[1].toLowerCase()] ?? match[1], chapter, verse });
+    }
+    return refs;
+}
+
+function buildVerseKey(ref) {
+    return `${ref.book.toLowerCase()} ${ref.chapter}:${ref.verse}`;
+}
+
+function createVerseLogEntry(ref) {
+    const entry = document.createElement('div');
+    entry.className = 'verse-log-entry';
+    entry.title = 'Klik untuk copy';
+
+    const label = document.createElement('span');
+    label.textContent = `${ref.book} ${ref.chapter}:${ref.verse}`;
+
+    const hint = document.createElement('span');
+    hint.className = 'copy-hint';
+    hint.textContent = 'copy';
+
+    entry.append(label, hint);
+    entry.addEventListener('click', () => {
+        navigator.clipboard.writeText(label.textContent);
+        hint.textContent = '✓';
+        setTimeout(() => { hint.textContent = 'copy'; }, 1500);
+    });
+    return entry;
+}
+
+function updateVerseCount() {
+    verseCount.textContent = sessionVerses.length > 0 ? sessionVerses.length : '';
+}
+
+function renderVerseLog() {
+    verseLogList.innerHTML = '';
+    if (sessionVerses.length === 0) {
+        verseLogList.innerHTML = '<div class="verse-log-empty">–</div>';
+        updateVerseCount();
+        return;
+    }
+    sessionVerses.forEach(ref => verseLogList.appendChild(createVerseLogEntry(ref)));
+    updateVerseCount();
+}
+
+function addVersesToLog(refs) {
+    const newRefs = refs.filter(ref => !sessionVerses.some(v => v.key === buildVerseKey(ref)));
+    if (newRefs.length === 0) return;
+    if (sessionVerses.length === 0) verseLogList.innerHTML = '';
+    newRefs.forEach(ref => {
+        sessionVerses.push({ ...ref, key: buildVerseKey(ref) });
+        const entry = createVerseLogEntry(ref);
+        entry.classList.add('verse-entry-new');
+        verseLogList.appendChild(entry);
+    });
+    updateVerseCount();
+}
+
+function sanitizeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightVerses(text) {
+    return sanitizeHtml(text).replace(VERSE_RE, '<span class="verse-ref">$&</span>');
+}
+
+function createTranscriptLine(text, isInterim) {
+    const div = document.createElement('div');
+    div.className = isInterim ? 'line interim' : 'line';
+    div.innerHTML = highlightVerses(text);
+    return div;
+}
+
+const HISTORY_FADE_DARK  = [1, 0.5, 0.28, 0.13];
+const HISTORY_FADE_LIGHT = [1, 0.6, 0.38, 0.25];
+
+function applyHistoryFade() {
+    const opacities = document.documentElement.dataset.theme === 'light'
+        ? HISTORY_FADE_LIGHT : HISTORY_FADE_DARK;
+    const lines = transcriptHistory.querySelectorAll('.line:not(.placeholder)');
+    const total = lines.length;
+    lines.forEach((line, i) => {
+        line.style.opacity = opacities[Math.min(total - 1 - i, 3)];
+    });
+}
+
+function scrollHistoryToBottom() {
+    transcriptHistory.scrollTop = transcriptHistory.scrollHeight;
+}
+
+function updateActiveArea() {
+    transcriptActive.innerHTML = '';
+    if (interim) transcriptActive.appendChild(createTranscriptLine(interim, true));
+}
+
+function appendLineToHistory(text) {
+    placeholder.style.display = 'none';
+    transcriptHistory.appendChild(createTranscriptLine(text, false));
+    applyHistoryFade();
+    scrollHistoryToBottom();
+}
+
+function render() {
+    transcriptHistory.querySelectorAll('.line:not(.placeholder)').forEach(el => el.remove());
+    placeholder.style.display = (committed.length === 0 && !interim) ? '' : 'none';
+    committed.forEach(text => transcriptHistory.appendChild(createTranscriptLine(text, false)));
+    applyHistoryFade();
+    scrollHistoryToBottom();
+    updateActiveArea();
+}
+
+function updateStatus(state, text) {
+    dot.className          = state ? `dot ${state}` : 'dot';
     statusText.textContent = text;
 }
 
-function setPpBadge(state, text) {
-    ppBadge.className      = 'pp-badge' + (state ? ' ' + state : '');
-    ppBadge.textContent    = text;
+function updateProPresenterBadge(state, text) {
+    ppBadge.className        = state ? `pp-badge ${state}` : 'pp-badge';
+    ppBadge.textContent      = text;
     ppBadge.style.visibility = text ? 'visible' : 'hidden';
 }
 
-function ppBase() {
-    return `http://localhost:${document.getElementById('ppPort').value}/v1`;
-}
-
-// ── ProPresenter ───────────────────────────────────────────────────────────
-async function ppConnect() {
-    const msgName = document.getElementById('ppMessage').value.trim();
-    setPpBadge('', 'ProPresenter: menghubungi…');
-    try {
-        const res  = await fetch(`${ppBase()}/messages`);
-        const msgs = await res.json();
-        const msg  = msgs.find(m => m.id.name === msgName);
-
-        if (!msg) {
-            setPpBadge('error', `PP: message '${msgName}' tidak ditemukan`);
-            return;
-        }
-
-        ppMsgId = msg.id.uuid;
-
-        const res2   = await fetch(`${ppBase()}/message/${ppMsgId}`);
-        const data   = await res2.json();
-        const token  = (data.tokens || []).find(t => 'text' in t);
-
-        if (!token) {
-            setPpBadge('error', 'PP: tidak ada text token di message');
-            return;
-        }
-
-        ppTokenName = token.name;
-
-        // Trigger once to show the message overlay
-        await fetch(`${ppBase()}/message/${ppMsgId}/trigger`, { method: 'POST' });
-        setPpBadge('ok', 'ProPresenter: terhubung');
-
-    } catch {
-        setPpBadge('error', 'PP: tidak bisa connect (ProPresenter running?)');
-    }
-}
-
-function ppStartWorker() {
-    const ms = parseInt(document.getElementById('ppInterval').value) || 150;
-    ppWorker = setInterval(async () => {
-        if (!ppPending || !ppMsgId || !ppTokenName) return;
-        const text = ppPending;
-        ppPending  = null;
-        try {
-            await fetch(`${ppBase()}/message/${ppMsgId}/trigger`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify([{ name: ppTokenName, text: { text } }]),
-            });
-        } catch { /* silent — ProPresenter mungkin sedang sibuk */ }
-    }, ms);
-}
-
-function ppStopWorker() {
-    if (ppWorker) { clearInterval(ppWorker); ppWorker = null; }
-}
-
-async function ppClear() {
-    if (!ppMsgId) return;
-    try { await fetch(`${ppBase()}/message/${ppMsgId}/clear`); } catch { /* silent */ }
-    ppMsgId = ppTokenName = null;
-    setPpBadge('', '');
-}
-
-function ppSchedule(text) {
-    if (ppMsgId && ppTokenName) ppPending = text;
-}
-
-// ── On transcript update ───────────────────────────────────────────────────
-function onUpdate() {
-    render();
-    const display = interim || (committed.length ? committed[committed.length - 1] : null);
-    if (display) ppSchedule(display);
-}
-
-// ── Speech Recognition ─────────────────────────────────────────────────────
-async function start() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-        alert('Web Speech API tidak tersedia.\nGunakan Chrome atau Edge terbaru.');
-        return;
-    }
-
-    committed.length = 0;
-    interim = '';
-    running = true;
-    render();
-
+function setButtonsRunning() {
     btnStart.disabled = true;
     btnStop.disabled  = false;
     btnClear.disabled = true;
-
-    await ppConnect();
-    ppStartWorker();
-
-    recog = new SR();
-    recog.lang            = document.getElementById('lang').value;
-    recog.continuous      = true;
-    recog.interimResults  = true;
-    recog.maxAlternatives = 1;
-
-    recog.onstart = () => setStatus('listening', 'Mendengarkan…');
-
-    recog.onresult = (e) => {
-        let newInterim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-            const r = e.results[i];
-            if (r.isFinal) {
-                const t = r[0].transcript.trim();
-                if (t) {
-                    const totalChars = committed.reduce((n, s) => n + s.length, 0);
-                    if (totalChars >= CHARS_BEFORE_RESET) committed.length = 0;
-                    committed.push(t);
-                }
-            } else {
-                newInterim += r[0].transcript;
-            }
-        }
-        interim = newInterim.trim();
-        onUpdate();
-    };
-
-    recog.onerror = (e) => {
-        if (e.error === 'not-allowed') {
-            setStatus('', 'Izin mikrofon ditolak — izinkan di browser lalu coba lagi');
-            stop();
-        } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
-            console.warn('[STT error]', e.error);
-        }
-    };
-
-    // Chrome stops recognition after ~60s silence — auto-restart
-    recog.onend = () => {
-        if (running) {
-            // Small delay to avoid InvalidStateError on rapid restart
-            setTimeout(() => { if (running) try { recog.start(); } catch {} }, 100);
-        }
-    };
-
-    recog.start();
 }
 
-async function stop() {
-    running = false;   // set first so onend does not auto-restart
-
-    if (recog) {
-        recog.onend = null;
-        recog.stop();
-        recog = null;
-    }
-
-    ppStopWorker();
-    await ppClear();
-
-    interim = '';
-    render();
-
-    setStatus('', 'Selesai');
+function setButtonsStopped() {
     btnStart.disabled = false;
     btnStop.disabled  = true;
     btnClear.disabled = false;
 }
 
-function clearDisplay() {
-    committed.length = 0;
-    interim = '';
-    render();
+function buildProPresenterBaseUrl() {
+    return `http://localhost:${document.getElementById('ppPort').value}/v1`;
 }
 
-// ── Event listeners ────────────────────────────────────────────────────────
-btnStart.addEventListener('click', start);
-btnStop .addEventListener('click', stop);
-btnClear.addEventListener('click', clearDisplay);
+async function fetchProPresenterMessage(msgName) {
+    const res = await fetch(`${buildProPresenterBaseUrl()}/messages`);
+    const messages = await res.json();
+    return messages.find(m => m.id.name === msgName) ?? null;
+}
 
-document.addEventListener('keydown', e => {
-    if (e.key === 'F11') {
-        e.preventDefault();
-        document.documentElement.requestFullscreen?.();
+async function fetchMessageTextToken(msgId) {
+    const res = await fetch(`${buildProPresenterBaseUrl()}/message/${msgId}`);
+    const data = await res.json();
+    return (data.tokens ?? []).find(t => 'text' in t) ?? null;
+}
+
+async function triggerProPresenterMessage(text) {
+    await fetch(`${buildProPresenterBaseUrl()}/message/${proPresenterMsgId}/trigger`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify([{ name: proPresenterTokenName, text: { text } }]),
+    });
+}
+
+async function connectToProPresenter() {
+    const msgName = document.getElementById('ppMessage').value.trim();
+    updateProPresenterBadge('', 'ProPresenter: menghubungi…');
+    try {
+        const message = await fetchProPresenterMessage(msgName);
+        if (!message) {
+            updateProPresenterBadge('error', `PP: message '${msgName}' tidak ditemukan`);
+            return;
+        }
+        proPresenterMsgId = message.id.uuid;
+
+        const token = await fetchMessageTextToken(proPresenterMsgId);
+        if (!token) {
+            updateProPresenterBadge('error', 'PP: tidak ada text token di message');
+            return;
+        }
+        proPresenterTokenName = token.name;
+
+        await fetch(`${buildProPresenterBaseUrl()}/message/${proPresenterMsgId}/trigger`, { method: 'POST' });
+        updateProPresenterBadge('ok', 'ProPresenter: terhubung');
+    } catch {
+        updateProPresenterBadge('error', 'PP: tidak bisa connect (ProPresenter running?)');
     }
-    if (e.key === 'Escape' && document.fullscreenElement) {
-        document.exitFullscreen?.();
+}
+
+async function sendPendingProPresenterUpdate() {
+    if (!proPresenterPending || !proPresenterMsgId || !proPresenterTokenName) return;
+    const text = proPresenterPending;
+    proPresenterPending = null;
+    try { await triggerProPresenterMessage(text); } catch { /* silent */ }
+}
+
+function startProPresenterWorker() {
+    const intervalMs = parseInt(document.getElementById('ppInterval').value) || 150;
+    proPresenterWorker = setInterval(sendPendingProPresenterUpdate, intervalMs);
+}
+
+function stopProPresenterWorker() {
+    if (proPresenterWorker) { clearInterval(proPresenterWorker); proPresenterWorker = null; }
+}
+
+async function clearProPresenterMessage() {
+    if (!proPresenterMsgId) return;
+    try { await fetch(`${buildProPresenterBaseUrl()}/message/${proPresenterMsgId}/clear`); } catch { /* silent */ }
+    proPresenterMsgId = proPresenterTokenName = null;
+    updateProPresenterBadge('', '');
+}
+
+function scheduleProPresenterUpdate(text) {
+    if (proPresenterMsgId && proPresenterTokenName) proPresenterPending = text;
+}
+
+function handleTranscriptUpdate() {
+    updateActiveArea();
+    const displayText = interim || committed.at(-1) || null;
+    if (displayText) scheduleProPresenterUpdate(displayText);
+}
+
+function appendCommittedText(transcript) {
+    committed.push(transcript);
+    addVersesToLog(extractCompleteVerses(transcript));
+    appendLineToHistory(transcript);
+}
+
+function handleRecognitionResult(event) {
+    let newInterim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+            const text = result[0].transcript.trim();
+            if (text) appendCommittedText(text);
+        } else {
+            newInterim += result[0].transcript;
+        }
     }
+    interim = newInterim.trim();
+    handleTranscriptUpdate();
+}
+
+function handleRecognitionError(event) {
+    if (event.error === 'not-allowed') {
+        updateStatus('', 'Izin mikrofon ditolak — izinkan di browser lalu coba lagi');
+        stop();
+    } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.warn('[STT error]', event.error);
+    }
+}
+
+function scheduleRecognitionRestart() {
+    // Chrome stops recognition after ~60s silence and fires onend — restart to stay continuous
+    setTimeout(() => { if (running) try { recog.start(); } catch {} }, RECOGNITION_RESTART_DELAY_MS);
+}
+
+function createRecognizer() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognizer          = new SR();
+    recognizer.lang           = document.getElementById('lang').value;
+    recognizer.continuous     = true;
+    recognizer.interimResults = true;
+    recognizer.maxAlternatives = 1;
+    recognizer.onstart  = () => updateStatus('listening', 'Mendengarkan…');
+    recognizer.onresult = handleRecognitionResult;
+    recognizer.onerror  = handleRecognitionError;
+    recognizer.onend    = () => { if (running) scheduleRecognitionRestart(); };
+    return recognizer;
+}
+
+async function start() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Web Speech API tidak tersedia.\nGunakan Chrome atau Edge terbaru.'); return; }
+
+    committed.length = 0;
+    sessionVerses.length = 0;
+    interim = '';
+    running = true;
+    document.title = TITLE_LIVE;
+    placeholder.innerHTML = PLACEHOLDER_LIVE;
+    render();
+    renderVerseLog();
+    setButtonsRunning();
+
+    await connectToProPresenter();
+    startProPresenterWorker();
+
+    recog = createRecognizer();
+    recog.start();
+    startWaveform();
+}
+
+async function stop() {
+    running = false; // must be set before recog.stop() to prevent scheduleRecognitionRestart
+    if (recog) { recog.onend = null; recog.stop(); recog = null; }
+
+    stopWaveform();
+    stopProPresenterWorker();
+    await clearProPresenterMessage();
+
+    interim = '';
+    placeholder.innerHTML = PLACEHOLDER_IDLE;
+    render();
+    document.title = TITLE_IDLE;
+    updateStatus('', 'Selesai');
+    setButtonsStopped();
+}
+
+function clearDisplay() {
+    committed.length = 0;
+    sessionVerses.length = 0;
+    interim = '';
+    placeholder.innerHTML = PLACEHOLDER_IDLE;
+    render();
+    renderVerseLog();
+}
+
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    btnTheme.textContent = theme === 'light' ? '☾' : '☀';
+    localStorage.setItem('stt-theme', theme);
+    applyHistoryFade();
+    if (!running) drawIdleWaveform();
+}
+
+function toggleTheme() {
+    applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+}
+
+applyTheme(localStorage.getItem('stt-theme') ?? 'dark');
+drawIdleWaveform();
+
+btnStart.addEventListener('click', start);
+btnStop.addEventListener('click', stop);
+btnClear.addEventListener('click', clearDisplay);
+btnTheme.addEventListener('click', toggleTheme);
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'F11') { event.preventDefault(); document.documentElement.requestFullscreen?.(); }
+    if (event.key === 'Escape' && document.fullscreenElement) { document.exitFullscreen?.(); }
 });
 </script>
 </body>
